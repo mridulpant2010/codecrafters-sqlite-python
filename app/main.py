@@ -1,6 +1,5 @@
 import sys
 
-from dataclasses import dataclass
 
 
 DATABASE_OFFSET_ENCODING = 56
@@ -55,7 +54,6 @@ def parse_record_body(srl_type, file):
         datalen = (srl_type - 13) // 2
         return file.read(datalen).decode()
     else:
-        print("INVALID SERIAL TYPE", srl_type)
         return None
 
 
@@ -65,10 +63,8 @@ def parse_cell(c_ptr, file):
     format_hdr_sz = read_varint(file)
     serial_types = []
     format_body_start = format_hdr_start + format_hdr_sz
-    print(format_hdr_start, format_hdr_sz, format_body_start)
     while file.tell() < format_body_start:
         serial_types.append(read_varint(file))
-    print("Serial Type:", serial_types)
     record = []
     for srl_type in serial_types:
 
@@ -84,24 +80,17 @@ HEADER_OFFSET = 100
 
 if command == ".dbinfo":
     with open(database_file_path, "rb") as database_file:
-        # You can use print statements as follows for debugging, they'll be visible when running tests.
-        print("Logs from your program will appear here!")
         table_content = 0
         database_file.seek(HEADER_OFFSET + 3)
         # reserved_region = int.from_bytes(database_file.read(1), byteorder="big")
         number_of_cells = int.from_bytes(database_file.read(2), byteorder="big")
-        # print(interior_page)
-        print(number_of_cells)
 elif command == ".tables":
     with open(database_file_path, "rb") as database_file:
         # You can use print statements as follows for debugging, they'll be visible when running tests.
         database_file.seek(HEADER_OFFSET)
         page_type = int.from_bytes(database_file.read(1), byteorder="big")
-        print("page_type: ", page_type)
         database_file.seek(HEADER_OFFSET + 3)
         number_of_cells = int.from_bytes(database_file.read(2), byteorder="big")
-        # interior_btree_page_no = int.from_bytes(database_file.read(4), byteorder="big")
-        # print(interior_btree_page_no)
         database_file.seek(HEADER_OFFSET + 8)
         cell_pointers = [
             int.from_bytes(database_file.read(2), "big") for _ in range(number_of_cells)
@@ -109,12 +98,10 @@ elif command == ".tables":
         records = []
         for each_cell in cell_pointers:
             record = parse_cell(each_cell, database_file)
-            print("record:", record)
             records.append(record)
         tbl_name = []
         for each_record in records:
             if each_record[2] != "sqlite_sequence":
-                print(each_record)
                 tbl_name.append(each_record[2])
         print(*tbl_name)
 else:
