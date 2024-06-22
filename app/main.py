@@ -1,19 +1,13 @@
 import sys
 
 
+# IS_FIRST_BIT_ZERO_MASK = 0b10000000
+# LAST_SEVEN_BITS_MASK = 0b01111111
+# DATABASE_OFFSET_ENCODING = 56
 
-DATABASE_OFFSET_ENCODING = 56
-
-
-def get_database_encoding(database_file):
-    database_file.seek(DATABASE_OFFSET_ENCODING)
-    encoding = int.from_bytes(database_file.read(4), byteorder="big")
-    if encoding == 1:
-        return "UTF-8"
-    elif encoding == 2:
-        return "UTF-16le"
-    elif encoding == 3:
-        return "UTF-16be"
+database_file_path = sys.argv[1]
+command = sys.argv[2]
+HEADER_OFFSET = 100
 
 
 def read_int(file, size):
@@ -54,11 +48,14 @@ def parse_record_body(srl_type, file):
         datalen = (srl_type - 13) // 2
         return file.read(datalen).decode()
     else:
+        print("INVALID SERIAL TYPE")
         return None
 
 
 def parse_cell(c_ptr, file):
-    file.seek(c_ptr)
+    database_file.seek(c_ptr)
+    payload_size = read_varint(file)
+    row_id = read_varint(file)
     format_hdr_start = file.tell()
     format_hdr_sz = read_varint(file)
     serial_types = []
@@ -67,28 +64,22 @@ def parse_cell(c_ptr, file):
         serial_types.append(read_varint(file))
     record = []
     for srl_type in serial_types:
-
-        result = parse_record_body(srl_type, file)
-        if result:
-            record.append(result)
+        record.append(parse_record_body(srl_type, file))
     return record
 
 
-database_file_path = sys.argv[1]
-command = sys.argv[2]
-HEADER_OFFSET = 100
-
 if command == ".dbinfo":
     with open(database_file_path, "rb") as database_file:
-        table_content = 0
-        database_file.seek(HEADER_OFFSET + 3)
-        # reserved_region = int.from_bytes(database_file.read(1), byteorder="big")
-        number_of_cells = int.from_bytes(database_file.read(2), byteorder="big")
+        database_file.seek(16)  # Skip the first 16 bytes of the header
+        page_size = int.from_bytes(database_file.read(2), byteorder="big")
+        database_file.seek(103)
+        table_amt = int.from_bytes(database_file.read(2), byteorder="big")
+        print(f"database page size: {page_size}\nnumber of tables: {table_amt}")
 elif command == ".tables":
     with open(database_file_path, "rb") as database_file:
         # You can use print statements as follows for debugging, they'll be visible when running tests.
-        database_file.seek(HEADER_OFFSET)
-        page_type = int.from_bytes(database_file.read(1), byteorder="big")
+        # database_file.seek(HEADER_OFFSET)
+        # page_type = int.from_bytes(database_file.read(1), byteorder="big")
         database_file.seek(HEADER_OFFSET + 3)
         number_of_cells = int.from_bytes(database_file.read(2), byteorder="big")
         database_file.seek(HEADER_OFFSET + 8)
@@ -106,7 +97,3 @@ elif command == ".tables":
         print(*tbl_name)
 else:
     print(f"Invalid command: {command}")
-# TODO: the ability to understand and code this concept by reading the doc properly.
-
-# if __name__ == "__main__":
-#     pass
