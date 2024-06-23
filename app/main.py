@@ -1,10 +1,5 @@
 import sys
 
-
-# IS_FIRST_BIT_ZERO_MASK = 0b10000000
-# LAST_SEVEN_BITS_MASK = 0b01111111
-# DATABASE_OFFSET_ENCODING = 56
-
 database_file_path = sys.argv[1]
 command = sys.argv[2]
 HEADER_OFFSET = 100
@@ -53,33 +48,26 @@ def parse_record_body(srl_type, file):
 
 
 def parse_cell(c_ptr, file):
-    database_file.seek(c_ptr)
+    file.seek(c_ptr)
     payload_size = read_varint(file)
     row_id = read_varint(file)
     format_hdr_start = file.tell()
     format_hdr_sz = read_varint(file)
     serial_types = []
     format_body_start = format_hdr_start + format_hdr_sz
+    # print(payload_size, row_id, format_hdr_sz)
     while file.tell() < format_body_start:
         serial_types.append(read_varint(file))
+    # print(serial_types)
     record = []
     for srl_type in serial_types:
         record.append(parse_record_body(srl_type, file))
+    # print(record)
     return record
 
 
-if command == ".dbinfo":
+def read_file_contents():
     with open(database_file_path, "rb") as database_file:
-        database_file.seek(16)  # Skip the first 16 bytes of the header
-        page_size = int.from_bytes(database_file.read(2), byteorder="big")
-        database_file.seek(103)
-        table_amt = int.from_bytes(database_file.read(2), byteorder="big")
-        print(f"database page size: {page_size}\nnumber of tables: {table_amt}")
-elif command == ".tables":
-    with open(database_file_path, "rb") as database_file:
-        # You can use print statements as follows for debugging, they'll be visible when running tests.
-        # database_file.seek(HEADER_OFFSET)
-        # page_type = int.from_bytes(database_file.read(1), byteorder="big")
         database_file.seek(HEADER_OFFSET + 3)
         number_of_cells = int.from_bytes(database_file.read(2), byteorder="big")
         database_file.seek(HEADER_OFFSET + 8)
@@ -91,9 +79,52 @@ elif command == ".tables":
             record = parse_cell(each_cell, database_file)
             records.append(record)
         tbl_name = []
+        sqlite_schema_rows = []
         for each_record in records:
             if each_record[2] != "sqlite_sequence":
                 tbl_name.append(each_record[2])
-        print(*tbl_name)
+                sqlite_schema_rows.append(
+                    {
+                        "type": each_record[0],
+                        "name": each_record[2],
+                        "tbl_name": each_record[1],
+                        "rootpage": each_record[3],
+                        "sql": each_record[4],
+                    }
+                )
+        return tbl_name, sqlite_schema_rows
+
+
+if command == ".dbinfo":
+    with open(database_file_path, "rb") as database_file:
+        database_file.seek(16)
+        page_size = int.from_bytes(database_file.read(2), byteorder="big")
+        database_file.seek(103)
+        table_amt = int.from_bytes(database_file.read(2), byteorder="big")
+        print(f"database page size: {page_size}\nnumber of tables: {table_amt}")
+elif command == ".tables":
+    tbl_name, _ = read_file_contents()
+    print(*tbl_name)
+
+elif "count(*)" in command:
+    _, sqlite_schema_rows = read_file_contents()
+    table_name = command.split(" ")[-1]
+    for each_schema in sqlite_schema_rows:
+        if each_schema["tbl_name"] == table_name:
+            # print(each_schema["tbl_name"],each_schema["rootpage"])
+            rootpage = each_schema["rootpage"]
+
+    with open(database_file_path, "rb") as database_file:
+        database_file.seek(16)
+        page_size = int.from_bytes(database_file.read(2), byteorder="big")
+        offset = (rootpage - 1) * page_size
+        database_file.seek(offset)
+        value_internal = int.from_bytes(database_file.read(1), byteorder="big")
+        if value_internal == 13:
+            # leaf page
+            database_file.seek(offset + 3)
+            cell_content = int.from_bytes(database_file.read(2), byteorder="big")
+            print(cell_content)
+    # print(sqlite_schema_rows)
 else:
     print(f"Invalid command: {command}")
